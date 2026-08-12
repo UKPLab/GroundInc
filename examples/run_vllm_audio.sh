@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+python -m groundinc.evaluation.vllm_audio \
+  --vllm_url http://localhost:8000/v1 \
+  --model_id Qwen/Qwen3-Omni-30B-A3B-Instruct \
+  --input_file outputs/generated_groundinc.jsonl \
+  --output_file outputs/qwen_omni_audio.jsonl \
+  --video_mode auto \
+  --audio_dir audio \
+  --audio_ext wav \
+  --prompt_style temporal_inconsistency_veracity \
+  --max_async_jobs 4 \
+  --max_concurrent_requests 8

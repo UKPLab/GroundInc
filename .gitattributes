@@ -1,0 +1,26 @@
+# Keep repository text files stable across Windows/Linux checkouts.
+* text=auto
+
+.gitattributes text eol=lf
+.gitignore text eol=lf
+
+*.py text eol=lf
+*.sh text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.toml text eol=lf
+*.json text eol=lf
+*.jsonl text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.csv text eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.mp4 binary
+*.wav binary
+*.mp3 binary

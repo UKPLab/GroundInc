@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "groundinc"
+version = "0.1.0"
+description = "Code for GroundInc data generation, VLM inference, and finetuning."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "google-genai>=1.0.0",
+  "openai>=1.0.0",
+  "tqdm>=4.66.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+]
+# Finetuning is delegated to LLaMA-Factory; this package only prepares its
+# dataset. Pinned because video argument names have moved across releases.
+train = [
+  "llamafactory==0.9.4",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"groundinc.training" = ["dataset_info.json", "configs/*.yaml"]

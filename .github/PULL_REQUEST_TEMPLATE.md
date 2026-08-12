@@ -1,15 +1,9 @@
-### Summary :memo:
-_Write an overview about it._
+### Summary
+Briefly describe the change.
 
 ### Details
-_Describe more what you did on changes._
-1. (...)
-2. (...)
-
-### Bugfixes :bug: (delete if dind't have any)
--
+List the main implementation or documentation changes.
 
 ### Checks
-- [ ] Closed #798
-- [ ] Tested Changes
-- [ ] Stakeholder Approval
+- [ ] I reviewed the changed files for release-sensitive content.
+- [ ] I ran the relevant validation commands.

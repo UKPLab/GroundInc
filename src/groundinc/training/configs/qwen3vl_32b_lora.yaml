@@ -1,0 +1,45 @@
+model_name_or_path: Qwen/Qwen3-VL-32B-Instruct
+trust_remote_code: true
+flash_attn: fa2
+
+stage: sft
+do_train: true
+finetuning_type: lora
+lora_rank: 32
+lora_alpha: 64
+lora_dropout: 0.05
+lora_target: q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj
+use_rslora: true
+freeze_vision_tower: true
+
+dataset: groundinc_sft
+dataset_dir: sft
+template: qwen3_vl
+cutoff_len: 8192
+overwrite_cache: true
+preprocessing_num_workers: 4
+video_fps: 1.0
+video_maxlen: 128
+video_max_pixels: 50176
+
+output_dir: checkpoints/qwen3vl_32b_inconsistency_no_grounding
+logging_steps: 1
+save_steps: 200
+save_total_limit: 5
+plot_loss: true
+overwrite_output_dir: true
+report_to: none
+
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 16
+learning_rate: 2.0e-4
+num_train_epochs: 2.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.05
+weight_decay: 0.01
+bf16: true
+tf32: true
+gradient_checkpointing: true
+seed: 42
+ddp_timeout: 180000000
+deepspeed: examples/deepspeed/ds_z2_config.json
