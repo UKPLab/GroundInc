@@ -391,6 +391,8 @@ def multi_turn_no_grounding_prompt_bundle(asr_content, caption, fps="1 FPS"):
 
 
 PROMPT_STYLES = {
+    # Grounding-only. Used as the first pass of --video_mode predicted_snippet,
+    # and available on its own for temporal-grounding runs.
     "grounding": grounding_prompt,
     "separate": separate_prompt_bundle,
     "temporal_inconsistency_veracity": combined_prompt,
@@ -461,6 +463,9 @@ def get_prompt_style_spec(style):
 def parse_timestamps(text):
     if not text:
         return []
+    # Match clock times (MM:SS or HH:MM:SS) before plain numbers, so "00:24 - 01:07"
+    # becomes [24.0, 67.0] instead of [0.0, 24.0, 1.0, 7.0]. Decimal-second strings
+    # like "47.43 - 52.84" are unaffected.
     values = []
     for token in re.findall(r"\d{1,2}:\d{2}(?::\d{2})?|[-+]?\d*\.\d+|\d+", text):
         if ":" in token:
@@ -635,10 +640,13 @@ def build_combined_prediction(raw):
     }
 
 
+# Backward-compatible names for existing runners.
 video_asr_grounding_prompt = grounding_prompt
 video_asr_inconsistency_prompt = inconsistency_prompt
 video_asr_manipulation_prompt = inconsistency_prompt
 video_asr_veracity_prompt = veracity_prompt
+combined_prompt = combined_prompt
+temporal_veracity_only_prompt = temporal_veracity_only_prompt
 ground_truth_window_veracity_prompt = ground_truth_window_inconsistency_veracity_prompt
 trimmed_segment_inconsistency_veracity_prompt = inconsistency_veracity_only_prompt
 ground_truth_window_veracity_manipulation_prompt = ground_truth_window_inconsistency_veracity_prompt

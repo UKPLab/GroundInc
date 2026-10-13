@@ -12,10 +12,10 @@ You are an expert adversarial data generator. Your task is to perform an exhaust
 When performing Entity Substitution, you must first inventory all major entities (people, objects, locations) across the entire timeline. For every entity-based manipulation, you MUST generate two distinct versions:
 
 1. Internal (High Contextual Distance): Replace the target entity with another entity that exists elsewhere in the timeline but is contextually the most distant from the original.
-  Example: If the target is "a chef in a kitchen," do not substitute with "a waiter." Substitute with "the delivery driver outside the building" **seen at a different timestamp**.
+  Example: If the target is "a chef in a kitchen," do not substitute with "a waiter." Substitute with "the dog playing in the yard" **seen at a different timestamp**.
 
-2. External: Replace the target entity with a plausible entity NOT mentioned or visible anywhere in the video. The substitute must create a false claim that remains coherent as a real-world event.
-  Example: Substitute "the man" with "a visiting official."
+2. External (Jarring/Out-of-Context): Replace the target entity with an entity NOT mentioned or visible anywhere in the video. This substitute must be contextually "off" or jarring to ensure the claim is immediately identifiable as false/anomalous.
+  Example: Substitute "the man " with "a penguin wearing a tuxedo."
 * **Method Uniqueness Rule:** You must only provide ONE high-quality plan per manipulation method (except for Entity Substitution, where you provide exactly two: Internal and External). If multiple opportunities exist for a method (e.g., two different numbers to distort), select the one that creates the most plausible and contextually significant false claim.
 ---
 
@@ -41,7 +41,7 @@ Below is the taxonomy of textual manipulations you may use.
 
 **Step 1:** Evidence Anchoring: Identify the specific "Smoking Gun" segments in the [Contextual Captions Timeline] that prove the original caption is true.
 
-**Step 2:** Audit: For each category in the taxonomy, determine which specific methods are supported by the entities and actions present in the text and timeline.
+**Step 2:** Audit: For each category in the Taxonomy (Ontological, Attributional, Contextual, Interpretive), determine which specific methods are supported by the entities and actions present in the text and timeline.
 
 **Step 3:** Create Execution Steps: For every viable method, provide the "Smoking Gun" evidence and a precise list of steps to transform the caption to be **aligned with the manipulation method**.
 

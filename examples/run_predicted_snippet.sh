@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Two passes per caption task: ground on the full video, then verify on the
+# model's own predicted interval with ASR windowed to the same span.
+# Requires ffmpeg with libx264 on PATH.
+
 python -m groundinc.evaluation.vllm_asr \
   --vllm_url http://localhost:8000/v1 \
   --model_id Qwen/Qwen3-VL-8B-Instruct \

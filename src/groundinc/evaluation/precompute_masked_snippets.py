@@ -124,6 +124,7 @@ def main():
         for data in records
     ]
 
+    # Avoid two workers racing to write the same cached file.
     deduped = []
     seen = set()
     for task in tasks:

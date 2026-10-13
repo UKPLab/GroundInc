@@ -1,106 +1,92 @@
-<p align="center">
-  <img src='logo.png' width='200'>
-</p>
-
 # GroundInc
-[![License](https://img.shields.io/github/license/UKPLab/GroundInc)](https://opensource.org/licenses/Apache-2.0)
-[![Python Versions](https://img.shields.io/badge/Python-3.10-blue.svg?style=flat&logo=python&logoColor=white)](https://www.python.org/)
 
-GroundInc is a benchmark for evidence-grounded video caption verification. The
-task has three steps: grounding a caption to the relevant video segment,
-classifying the type of inconsistency, and predicting veracity, over 10
-inconsistency types across visual and spoken evidence. This repository has the
-code and annotations for caption generation, inference, and finetuning.
+Anonymous release code and annotations for GroundInc: generating manipulated
+audio-visual captions, running VLM inference over them, and finetuning.
 
-> **Abstract:** Video caption verification requires more than predicting whether
-> a caption is true or false. A fact-checker must also identify the relevant
-> evidence in the video and explain how a false caption contradicts that
-> evidence. However, existing benchmarks primarily evaluate the final verdict
-> without testing whether models can support the intermediate reasoning steps. To
-> address this gap, we introduce GroundInc, an evidence-grounded benchmark for
-> video caption verification. GroundInc decomposes the task into three sub-tasks
-> that mirror the fact-checking workflow: temporally grounding a caption to the
-> relevant video segment, classifying the type of inconsistency, and predicting
-> caption veracity. The benchmark covers 10 inconsistency types spanning both
-> visual and spoken evidence. Evaluating 11 vision-language models, we find that
-> inconsistent captions degrade temporal grounding performance and that models
-> localize spoken evidence far more reliably than visual evidence. Providing the
-> gold evidence as a textual pointer does not improve downstream performance,
-> whereas physically restricting the input to the relevant segment does. These
-> findings show that high verdict accuracy can mask an inability to ground and
-> explain the inconsistency, so verdict-only evaluation overstates how well
-> models actually perform video caption verification.
+## Contents
 
-Contact person: [Shivam Sharma](mailto:sharma.shivam2705@gmail.com)
+- `data/`: the GroundInc annotations (news test set and cross-domain set).
+- `prompts/`: the two-step Gemini prompts.
+- `src/groundinc/data_generation/`: the annotation pipeline.
+- `src/groundinc/evaluation/`: OpenAI-compatible vLLM inference runners.
+- `src/groundinc/training/`: SFT dataset preparation and LLaMA-Factory configs.
+- `src/groundinc/data/`: JSONL loading, caption-task construction, prompt registry and parsers.
+- `docs/`: data format, training, reproducibility.
+- `scripts/smoke_test.sh`: offline sanity check needing no data, media, or server.
 
-[UKP Lab](https://www.ukp.tu-darmstadt.de/) | [TU Darmstadt](https://www.tu-darmstadt.de/)
-
-Don't hesitate to send us an e-mail or report an issue if something is broken or
-if you have further questions.
-
-## Getting Started
+## Installation
 
 ```bash
-conda create -n groundinc python=3.10 -y
-conda activate groundinc
-pip install -r requirements.txt
-pip install -e .
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .          # generation + inference
+pip install -e ".[train]" # adds LLaMA-Factory for finetuning
 ```
 
-ffmpeg is required for the snippet video modes. For finetuning, also install the training dependency with `pip install -e ".[train]"`.
+`ffmpeg`/`ffprobe` **built with libx264** are required for the snippet video
+modes. A build without libx264 fails to cut clips.
 
-### Repository layout
+## What is and isn't included
 
-- `data/`: the GroundInc annotations.
-- `prompts/`: the caption generation prompts.
-- `src/groundinc/data_generation/`: caption generation.
-- `src/groundinc/evaluation/`: inference runners.
-- `src/groundinc/training/`: finetuning data preparation and configs.
-- `src/groundinc/data/`: data loading and prompts.
-- `docs/`: data format, training, and reproducibility notes.
+Included: annotations, the generation pipeline, inference runners, and
+finetuning preparation.
 
-### Data and media
+**Not included: any scoring, metric, or analysis code.** The runners write
+parsed predictions to JSONL and stop. Computing accuracy, macro-F1, or IoU is
+left to you.
 
-The repository ships the annotations only. Videos, transcripts, and audio are
-not included. The `id` field is a YouTube identifier, and the source videos can
-be obtained through ChronusAV. See [`docs/DATA.md`](docs/DATA.md).
+Also not included: videos, transcripts, and media-preprocessing scripts. See
+[`docs/DATA.md`](docs/DATA.md) for what you must supply.
 
-## Usage
-
-### Generate captions
+## Generate annotations
 
 ```bash
 export GEMINI_API_KEY=...
 python -m groundinc.data_generation.generate_with_gemini \
-  --input_jsonl <input>.jsonl \
-  --output_jsonl outputs/generated.jsonl \
+  --input_jsonl <base captions>.jsonl \
+  --output_jsonl outputs/generated_groundinc.jsonl \
   --prompt1_file prompts/step1_prompt.md \
   --prompt2_file prompts/step2_prompt.md \
   --video_dir videos
 ```
 
-### Run inference
+The generator sees the source video together with the complete timestamped
+caption timeline, the annotated target segment, and the manipulation taxonomy.
+Per record and per modality, stage 1 rephrases the target caption and plans one
+manipulation per applicable taxonomy method; stage 2 executes those plans into
+false captions with refutations; the two modalities are then cross-stitched into
+combined items sharing the original event's gold evidence span.
+
+## Run inference
 
 ```bash
 python -m groundinc.evaluation.vllm_asr \
   --vllm_url http://localhost:8000/v1 \
   --input_file data/groundinc_news.jsonl \
-  --output_file outputs/predictions.jsonl \
+  --output_file outputs/model_asr.jsonl \
   --video_mode auto --asr_dir asr \
   --prompt_style temporal_inconsistency_veracity
 ```
 
-Use `--list_prompt_styles` to see the available styles. `vllm_audio` is the
-video and audio version.
+`--list_prompt_styles` shows the registered styles. `vllm_audio` is the
+video+audio counterpart.
 
-| Video mode | Input |
+### Video modes
+
+| Mode | Evidence shown to the model |
 | --- | --- |
 | `auto` / `id` / `clip` | Whole video |
-| `snippet` | The relevant segment |
-| `masked_snippet` | Full video with everything outside the segment masked |
-| `predicted_snippet` | The model's predicted segment |
+| `snippet` | Gold segment, cut out |
+| `masked_snippet` | Full-length video with everything outside the gold segment blacked out |
+| `predicted_snippet` | The model's **own** predicted interval |
 
-### Finetune
+`predicted_snippet` runs two passes per caption task: a grounding call on the
+full video, then verification on the crop with ASR windowed to the same span
+(`--asr_align span`). A task whose grounding cannot be parsed into an interval
+inside the video is written as a terminal failure — the gold span is never
+substituted in. Supported by the ASR runner only.
+
+## Finetune
 
 ```bash
 python -m groundinc.training.prepare_sft \
@@ -112,9 +98,12 @@ cp src/groundinc/training/dataset_info.json sft/
 llamafactory-cli train src/groundinc/training/configs/qwen3vl_8b_lora.yaml
 ```
 
-See [`docs/TRAINING.md`](docs/TRAINING.md).
+Preparation reuses the same `build_caption_tasks` the evaluators call, so a
+training sample and an inference item cannot drift apart. See
+[`docs/TRAINING.md`](docs/TRAINING.md), particularly the table mapping each
+training prompt to the `--prompt_style` its checkpoint must be evaluated with.
 
-## Disclaimer
+## Notes for anonymous release
 
-> This repository contains experimental software and is released for the sole
-> purpose of giving additional background details on the respective publication.
+Excludes raw media, model checkpoints, cluster paths, API keys, git metadata,
+and cache directories.

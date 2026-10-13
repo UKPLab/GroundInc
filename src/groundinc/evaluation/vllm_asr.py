@@ -145,7 +145,10 @@ def load_asr_text(data, asr_dir, asr_field, asr_suffix, snippet_span=None):
 
 
 def load_asr_payload(data, asr_dir, asr_field, asr_suffix):
-    """Raw ASR payload."""
+    """Raw ASR payload, so a caller can re-window it per predicted span.
+
+    Mirrors load_asr_text's resolution order. Returns None when nothing is found.
+    """
     for field in (asr_field, "asr_text", "asr", "transcript"):
         if field and field in data and data[field]:
             return data[field]
@@ -187,7 +190,13 @@ async def resolve_predicted_evidence(
     request_semaphore,
     context,
 ):
-    """Ground on the full video, then cut the predicted interval."""
+    """Ground on the full video, then cut the predicted interval.
+
+    Returns (media_items, asr_text, extra) where extra records what the verifier
+    was shown. On an unparseable or uncuttable span, extra["predicted_span"] is
+    None and the caller writes a terminal failure - the gold span and the full
+    video are never substituted in.
+    """
     grounding_prompt = build_asr_prompt(
         args.grounding_prompt_style,
         asr_text,
@@ -225,7 +234,7 @@ async def resolve_predicted_evidence(
         snippet_path = await cut_predicted_snippet(
             context["source_video_path"], crop, args, context["vid_id"], context["select_seg"]
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - a failed cut is a per-task failure
         extra["error"] = f"snippet cut failed: {exc}"
         return media_items, asr_text, extra
 
@@ -378,6 +387,8 @@ async def process_video_line(client, model_id, data, args, request_semaphore):
     data["resolved_video_path"] = video_path
     if source_video_path:
         data["source_video_path"] = source_video_path
+        # predicted_snippet cuts per caption task, so the snippet path is
+        # recorded on each result rather than once for the whole record.
         if args.video_mode != "predicted_snippet":
             data["snippet_path"] = video_path
     data["asr_text"] = asr_text
@@ -386,6 +397,8 @@ async def process_video_line(client, model_id, data, args, request_semaphore):
 
 
 def caption_task_video_mode(data, video_mode):
+    # Snippet modes cut from the full-length source, so gold spans stay in
+    # absolute video time rather than clip-relative time.
     if video_mode not in SNIPPET_VIDEO_MODES:
         return video_mode
     return "id"
@@ -412,7 +425,7 @@ async def main():
     except ModuleNotFoundError:
         parser.error("missing dependency: install/activate an environment with the 'openai' package")
 
-    api_key = os.environ.get("VLLM_API_KEY", "vllm")
+    api_key = os.environ.get("OPENAI_API_KEY", "vllm")
     client = AsyncOpenAI(base_url=args.vllm_url, api_key=api_key)
     await process_records(client, args, process_video_line, iter_input_records)
 

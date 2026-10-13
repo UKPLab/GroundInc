@@ -364,6 +364,7 @@ def build_prompt(style, **kwargs):
         raise ValueError(f"Unknown prompt style '{style}'. Valid styles: {valid}") from exc
 
 
+# Backward-compatible audio names.
 video_audio_grounding_prompt = grounding_prompt
 video_audio_inconsistency_prompt = inconsistency_prompt
 video_audio_manipulation_prompt = inconsistency_prompt

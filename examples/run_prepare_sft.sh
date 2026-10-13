@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Build a LLaMA-Factory SFT dataset from GroundInc annotations.
+# Run with --report_only first to size cutoff_len (see docs/TRAINING.md).
+
 python -m groundinc.training.prepare_sft \
   --input data/groundinc_other.jsonl \
   --video_dir videos \

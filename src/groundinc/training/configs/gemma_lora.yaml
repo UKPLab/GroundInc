@@ -1,7 +1,26 @@
+# Gemma-4-E4B LoRA SFT on GroundInc.
+#
+# Build the dataset first:
+#   python -m groundinc.training.prepare_sft \
+#     --input data/groundinc_other.jsonl --video_dir videos --asr_dir asr \
+#     --prompt_name inconsistency_no_grounding --output sft/train.json
+#   cp src/groundinc/training/dataset_info.json sft/
+#
+# Then:
+#   llamafactory-cli train src/groundinc/training/configs/gemma_lora.yaml
+#
+# Hyperparameters reproduce the paper's Gemma run. video_maxlen is set
+# explicitly: max_pixels was silently ignored on the old Gemma frame
+# extraction path, so the frame budget is the setting that actually binds. Video and LoRA key names have
+# changed across LLaMA-Factory releases - see docs/TRAINING.md for the pinned
+# version this was written against.
+
+### model
 model_name_or_path: google/gemma-4-E4B-it
 trust_remote_code: true
 flash_attn: sdpa
 
+### method
 stage: sft
 do_train: true
 finetuning_type: lora
@@ -12,16 +31,19 @@ lora_target: q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj
 use_rslora: true
 freeze_vision_tower: true
 
+### dataset
 dataset: groundinc_sft
 dataset_dir: sft
 template: gemma3
 cutoff_len: 16384
 overwrite_cache: true
 preprocessing_num_workers: 4
-video_fps: 1.0
+# fps 0.5 and max_pixels 50176 mirror the paper's frame budget.
+video_fps: 0.5
 video_maxlen: 96
 video_max_pixels: 50176
 
+### output
 output_dir: checkpoints/gemma4_e4b_inconsistency_no_grounding
 logging_steps: 1
 save_steps: 200
@@ -30,6 +52,7 @@ plot_loss: true
 overwrite_output_dir: true
 report_to: none
 
+### train
 per_device_train_batch_size: 1
 gradient_accumulation_steps: 16
 learning_rate: 2.0e-4

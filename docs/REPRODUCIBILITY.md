@@ -1,33 +1,48 @@
 # Reproducibility
 
-## 1. Install
+Four independent stages. Only the first runs without media.
+
+## 0. Install
 
 ```bash
-conda create -n groundinc python=3.10 -y
-conda activate groundinc
-pip install -r requirements.txt
-pip install -e .
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[train]"
+bash scripts/smoke_test.sh
 ```
 
-## 2. Annotations
+The smoke test compiles the package, checks the prompt registry and video
+modes, asserts the timestamp parser handles clock formats, and verifies each
+training prompt has a target format and an inference counterpart. It needs no
+data, media, or server.
 
-The files under `data/` are the annotations used in the paper. To regenerate
-them from base captions:
+## 1. Annotations
+
+The shipped files under `data/` are the annotations used in the paper; nothing
+needs regenerating to run stages 2–4.
+
+To regenerate from base captions:
 
 ```bash
 export GEMINI_API_KEY=...
 bash examples/run_generation.sh
 ```
 
-## 3. Media
+This stage needs the videos (`--video_dir`) but no ASR. A record whose video
+cannot be resolved or uploaded is skipped.
 
-Videos, transcripts, and audio are not included. You need:
+## 2. Media
 
-- `videos/{id}.mp4`
-- `asr/{id}_asr.json` with a `"prompt"` string or `"segments"` (`start`/`end`/`text`)
-- `audio/{id}.wav` for the video and audio runner
+Not shipped and not scripted. You need:
 
-For `masked_snippet`, precompute the masked clips first:
+- `videos/{id}.mp4` — fetched by YouTube id.
+- `asr/{id}_asr.json` — a `"prompt"` string, or `"segments"` with
+  `start`/`end`/`text`. Segment timings are required for `--asr_align span`.
+- `audio/{id}.wav` — only for the video+audio runner.
+
+Transcripts may instead be inlined per record as `asr_text`, which removes the
+`--asr_dir` requirement entirely.
+
+For `--video_mode masked_snippet`, precompute the masked clips once:
 
 ```bash
 python -m groundinc.evaluation.precompute_masked_snippets \
@@ -35,20 +50,34 @@ python -m groundinc.evaluation.precompute_masked_snippets \
   --video_dir videos --snippet_dir masked_snippets
 ```
 
-## 4. Inference
+## 3. Inference
 
 ```bash
-bash examples/run_vllm_asr.sh
-bash examples/run_vllm_audio.sh
-bash examples/run_predicted_snippet.sh
+bash examples/run_vllm_asr.sh          # video + ASR
+bash examples/run_vllm_audio.sh        # video + audio
+bash examples/run_predicted_snippet.sh # predicted-interval crop
 ```
 
-All expect a vLLM server exposing a chat-completions endpoint at `--vllm_url`.
+All expect an OpenAI-compatible vLLM server at `--vllm_url`. Runs are
+resumable: rows already present in the output file are skipped, and connection-
+error rows are always retried.
 
-## 5. Finetuning
+Output is parsed predictions, not scores. **No metric code ships with this
+release.**
+
+## 4. Finetuning
 
 ```bash
 bash examples/run_prepare_sft.sh
 ```
 
-See [`TRAINING.md`](TRAINING.md).
+Run `prepare_sft` with `--report_only` first to size `cutoff_len` against the
+printed length distribution. Then train with `llamafactory-cli`. Details and
+the prompt/style pairing table are in [`TRAINING.md`](TRAINING.md).
+
+## Determinism
+
+Inference defaults to `--temperature 0.01`, near-greedy but not bit-exact
+across servers or batch compositions. Generation uses temperature 0.4 for
+planning and 0.1 for execution, so regenerated annotations will differ in
+wording from the shipped ones.

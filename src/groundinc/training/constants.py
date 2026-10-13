@@ -25,6 +25,9 @@ INCONSISTENCY_LABELS = {
     "No Inconsistency",
 }
 
+# Each training prompt has one inference counterpart. Pairing a checkpoint with
+# a mismatched --prompt_style produces output the evaluator's parser cannot
+# read, so prepare_sft records the mapping in the run's sidecar metadata.
 PROMPT_NAME_TO_INFERENCE_STYLE = {
     "veracity": "temporal_veracity_only",
     "no_evidence": "inconsistency_veracity_only",

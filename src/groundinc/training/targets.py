@@ -1,4 +1,8 @@
-"""Supervision targets for GroundInc SFT."""
+"""Supervision targets for GroundInc SFT.
+
+Target strings are byte-identical to the ones used for the paper's checkpoints,
+so runs prepared here stay comparable with those results.
+"""
 from __future__ import annotations
 
 from typing import Optional

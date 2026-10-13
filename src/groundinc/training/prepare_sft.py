@@ -1,4 +1,19 @@
-"""Turn GroundInc annotations into a LLaMA-Factory SFT dataset."""
+#!/usr/bin/env python3
+"""Turn GroundInc annotations into a LLaMA-Factory SFT dataset.
+
+Expands each record into caption tasks with groundinc.data.dataset (the same
+function the evaluators use, so training and inference agree on what a task
+is), renders the training prompt, and writes one ShareGPT sample per task.
+
+    python -m groundinc.training.prepare_sft \
+      --input data/groundinc_other.jsonl \
+      --video_dir videos --asr_dir asr \
+      --prompt_name inconsistency_no_grounding \
+      --output sft/train.json
+
+Pass --report_only first: it prints the prompt-length distribution so cutoff_len
+can be chosen deliberately instead of silently truncating samples away.
+"""
 from __future__ import annotations
 
 import argparse
@@ -19,7 +34,11 @@ VIDEO_TOKEN = "<video>"
 
 
 def load_asr_text(record, asr_dir, asr_suffix="_asr.json"):
-    """Resolve the ASR transcript for a record."""
+    """Inline asr_text wins; otherwise {asr_dir}/{id}{asr_suffix} -> "prompt".
+
+    The "prompt" key matches what the evaluators read (vllm_asr.extract_asr_text),
+    so a checkpoint sees the same transcript shape at train and test time.
+    """
     for field in ("asr_text", "asr", "transcript"):
         value = record.get(field)
         if isinstance(value, str) and value.strip():
@@ -127,6 +146,8 @@ def report(lengths, stats, args, task_mode):
     lengths = sorted(lengths)
     def pct(p):
         return lengths[min(len(lengths) - 1, int(p * len(lengths)))]
+    # Characters, not tokens: the tokenizer lives in LLaMA-Factory, not here.
+    # ~3.5 chars/token is a usable planning proxy for these prompts.
     print("  chars per sample        "
           f"min={lengths[0]} p50={pct(0.5)} p90={pct(0.9)} p99={pct(0.99)} max={lengths[-1]}")
     approx = [n / 3.5 for n in lengths]
@@ -198,6 +219,8 @@ def main():
                 "asr_dir": args.asr_dir,
                 "samples": stats["samples"],
                 "records_used": stats["records_used"],
+                # A checkpoint trained on this file must be evaluated with this
+                # style; any other pairing yields unparseable output.
                 "inference_prompt_style": inference_style,
             },
             fh,

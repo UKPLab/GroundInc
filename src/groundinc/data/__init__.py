@@ -1,4 +1,5 @@
 from .dataset import (
+    EXCLUDED_LABELS,
     build_caption_tasks,
     iter_input_records,
     load_processed_keys,
@@ -50,3 +51,16 @@ from .prompts_audio import (
     video_audio_manipulation_prompt,
     video_audio_veracity_prompt,
 )
+
+# Legacy aliases retained for older runners that still import these names.
+parse_combined_response = parse_temporal_inconsistency_veracity_response
+temporal_veracity_manipulation_prompt = combined_prompt
+binary_veracity_only_prompt = temporal_veracity_only_prompt
+binary_veracity_with_refutation_prompt = inconsistency_veracity_only_prompt
+qwen_v2_combined_prompt = combined_prompt
+qwen_v2_veracity_only_prompt = temporal_veracity_only_prompt
+qwen_v2_no_evidence_prompt = inconsistency_veracity_only_prompt
+qwen_v4_temporal_veracity_prompt = temporal_veracity_only_prompt
+qwen_v5_gt_veracity_prompt = ground_truth_window_inconsistency_veracity_prompt
+qwen_v6_trimmed_inconsistency_veracity_prompt = inconsistency_veracity_only_prompt
+qwen_gt_tg_veracity_manipulation_prompt = ground_truth_window_inconsistency_veracity_prompt

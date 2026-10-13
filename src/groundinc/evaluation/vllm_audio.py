@@ -148,7 +148,7 @@ async def main():
     except ModuleNotFoundError:
         parser.error("missing dependency: install/activate an environment with the 'openai' package")
 
-    api_key = os.environ.get("VLLM_API_KEY", "vllm")
+    api_key = os.environ.get("OPENAI_API_KEY", "vllm")
     client = AsyncOpenAI(base_url=args.vllm_url, api_key=api_key)
     await process_records(client, args, process_video_line, iter_input_records)
 

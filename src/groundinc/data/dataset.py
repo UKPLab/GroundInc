@@ -2,8 +2,11 @@ import glob
 import json
 import os
 
-
-ANNOTATIONS_FIELD = "groundinc_annotations"
+EXCLUDED_LABELS = {
+    "Quantifier and Scope Distortions",
+    "Epistemic Inflation",
+    "Entity Disambiguation / Homonyms",
+}
 
 
 def seg_time_to_seconds(time_str):
@@ -76,10 +79,25 @@ def compute_ground_truth_span(data, video_mode):
     return [round(seg_time_to_seconds(seg[0]), 3), round(seg_time_to_seconds(seg[1]), 3)]
 
 
+def _iter_legacy_manipulations(section):
+    if not isinstance(section, dict):
+        return
+
+    for item in section.get("step2_execution", []):
+        if not isinstance(item, dict):
+            continue
+        yield {
+            "method": item.get("manipulation_method"),
+            "entity_type": item.get("entity_type"),
+            "false_caption": item.get("false_caption"),
+            "type": item.get("type"),
+        }
+
+
 def build_caption_tasks(data, video_mode):
     gt_span = compute_ground_truth_span(data, video_mode)
     select_seg = data["select_seg"]
-    fm = data.get(ANNOTATIONS_FIELD, {})
+    fm = data.get("forensic_mentalization", {})
 
     visual_orig = data["video_captions"][select_seg - 1]
     audio_orig = data["audio_captions"][select_seg - 1]
@@ -126,6 +144,15 @@ def build_caption_tasks(data, video_mode):
     audio_manips = list(fm.get("audio_only_manipulations", []))
     combined_manips = list(fm.get("combined_manipulations", []))
 
+    # Backward compatibility for older forensic_mentalization records stored as:
+    # fm["visual"|"audio"|"combined"]["step2_execution"].
+    if not visual_manips and isinstance(fm.get("visual"), dict):
+        visual_manips = list(_iter_legacy_manipulations(fm["visual"]))
+    if not audio_manips and isinstance(fm.get("audio"), dict):
+        audio_manips = list(_iter_legacy_manipulations(fm["audio"]))
+    if not combined_manips and isinstance(fm.get("combined"), dict):
+        combined_manips = list(_iter_legacy_manipulations(fm["combined"]))
+
     for manip_list, cat in [
         (visual_manips, "visual"),
         (audio_manips, "audio"),
@@ -133,7 +160,7 @@ def build_caption_tasks(data, video_mode):
         for item in manip_list:
             method = item.get("method")
             cap = item.get("false_caption")
-            if not method or not cap:
+            if not method or not cap or method in EXCLUDED_LABELS:
                 continue
             tasks.append(
                 {
@@ -151,7 +178,7 @@ def build_caption_tasks(data, video_mode):
     for item in combined_manips:
         method = item.get("method")
         cap = item.get("false_caption")
-        if not method or not cap:
+        if not method or not cap or method in EXCLUDED_LABELS:
             continue
 
         item_type = item.get("type") or ""

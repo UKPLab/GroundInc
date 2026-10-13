@@ -1,0 +1,62 @@
+# Categorical interval-bank localizer, paired loader, ordinary grounding CE (lambda_pair=0).
+# Matched control for the paired-JS config: the ONLY field that differs is `lambda_pair`.
+# Replace every <placeholder> with your own paths before running.
+
+# --- model ---
+model_name_or_path: "Qwen/Qwen3-VL-8B-Instruct"
+torch_dtype: "bfloat16"
+attn_implementation: "flash_attention_2"
+freeze_vision_tower: true
+lora_enable: true
+lora_r: 32
+lora_alpha: 64
+lora_dropout: 0.05
+lora_use_rslora: false
+lora_target_modules: "q_proj,v_proj,k_proj,o_proj,gate_proj,up_proj,down_proj"
+wandb_entity: ""
+wandb_project: "groundinc-localizer"
+
+# --- data (supply your own) ---
+train_data_path: "<train_jsonl>"     # e.g. data/groundinc_other.jsonl
+whisperx_dir: "<asr_dir>"
+video_dir: "<video_dir>"
+video_mode: "id"
+fps: 0.5
+max_pixels: 50176
+max_video_frames: 32
+max_length: 12288
+enable_video: true
+
+# --- paired objective / bank ---
+objective: "categorical"   # categorical CE over candidate ID logits
+lambda_pair: 0.0           # 0 = plain CE control; set 0.1 for the paired-JS term
+bank_widths: "8,16,32,64"
+bank_stride_frac: 0.5
+max_candidates: 128
+bank_min_len: 1.0
+iou_mode: "hull"
+num_sampler_epochs: 8
+dev_frac: 0.1
+split_seed: 42
+
+# --- training ---
+output_dir: "<output_dir>"
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 16
+learning_rate: 1.0e-4
+weight_decay: 0.01
+warmup_ratio: 0.05
+lr_scheduler_type: "cosine"
+bf16: true
+tf32: true
+gradient_checkpointing: true
+remove_unused_columns: false
+dataloader_num_workers: 4
+logging_steps: 1
+save_strategy: "steps"
+save_steps: 200
+save_total_limit: 3
+seed: 42
+report_to: "none"
+run_name: "localizer_ce"
+# deepspeed: "<deepspeed_zero2.json>"   # optional; ZeRO-2 for multi-GPU

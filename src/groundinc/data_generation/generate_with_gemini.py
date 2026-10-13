@@ -44,6 +44,14 @@ def generate_with_retry(client, model_name, contents, config, retries=6, base_sl
                 return None
 
 
+# ---------------------------------------------------------------------------
+# Video attachment (Gemini Files API)
+#
+# One upload per video, shared across both modality chains and every stage-2
+# batch for that record. Threads that ask for a video already being uploaded
+# block on the owner's event rather than starting a second upload.
+# ---------------------------------------------------------------------------
+
 _UPLOAD_LOCK = threading.Lock()
 _UPLOAD_STATE = {}
 
@@ -75,7 +83,7 @@ def upload_video_once(client, video_path, poll_interval=2.0, timeout=900):
         try:
             uploaded = client.files.upload(file=video_path)
             entry["file"] = _await_active(client, uploaded, poll_interval, timeout)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - surfaced to the caller below
             entry["error"] = exc
         finally:
             entry["event"].set()
@@ -102,7 +110,12 @@ def resolve_generation_video(data, video_dir):
 
 
 def format_timeline(captions, seg_time, seg_idx):
-    """Render the timestamped caption timeline."""
+    """Render the timestamped caption timeline.
+
+    Each entry carries its wall-clock span and the annotated segment is marked,
+    so refutations can cite real video times. Timestamps are kept out of
+    <TARGET_CAPTION> so the rephrased true caption stays clean prose.
+    """
     lines = []
     for i, caption in enumerate(captions):
         span = seg_time[i] if i < len(seg_time) and len(seg_time[i]) >= 2 else None
@@ -154,6 +167,7 @@ def process_modality_task(line_idx, line, api_key, p1_text, p2_text, mod, model_
     seg_idx = data.get("select_seg", 1) - 1
     client = genai.Client(api_key=api_key)
 
+    # 1. Setup Schemas
     step1_schema = types.Schema(
         type="OBJECT",
         properties={
@@ -193,13 +207,15 @@ def process_modality_task(line_idx, line, api_key, p1_text, p2_text, mod, model_
 
     context, target = format_inputs(data, seg_idx, mod)
 
+    # The generator audits the caption against the footage, so a record whose
+    # video cannot be resolved or uploaded is skipped, never generated without it.
     video_path = resolve_generation_video(data, media.video_dir)
     if not video_path:
         print(f"Skipping line {line_idx} ({mod}): no video for id={data.get('id')!r}")
         return (line_idx, mod, None)
     try:
         file_obj = upload_video_once(client, video_path, media.poll_interval, media.upload_timeout)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - upload failure is a skip, not a crash
         print(f"Skipping line {line_idx} ({mod}): video upload failed: {exc}")
         return (line_idx, mod, None)
     video_part = build_video_part(file_obj, fps=media.video_fps)
@@ -216,12 +232,7 @@ def process_modality_task(line_idx, line, api_key, p1_text, p2_text, mod, model_
     rephrased = step1_result.get("rephrased_caption", target)
     all_plans = step1_result.get("manipulation_plans", [])
 
-    audio_only_methods = ("Context Omission", "Affective/Framing")
-    filtered_plans = [
-        p
-        for p in all_plans
-        if not (mod == "visual" and any(m in p.get("method", "") for m in audio_only_methods))
-    ]
+    filtered_plans = [p for p in all_plans if not (mod == "visual" and "Context Omission" in p.get("method", ""))]
 
     final_manipulations = []
     batch_size = 3
@@ -253,6 +264,7 @@ def process_modality_task(line_idx, line, api_key, p1_text, p2_text, mod, model_
             )
 
     return (line_idx, mod, {
+        "planning_raw": step1_result,
         "rephrased": rephrased, 
         "manipulations": final_manipulations
     })
@@ -263,10 +275,16 @@ def combine_modalities(line_data, visual_res, audio_res):
     a_true = audio_res.get("rephrased", "")
 
     output = {
+        # Preservation of Planning Phase
+        "visual_planning": visual_res.get("planning_raw"),
+        "audio_planning": audio_res.get("planning_raw"),
+        
+        # Ground Truths
         "true_visual": v_true,
         "true_audio": a_true,
         "true_combined": f"{v_true} {a_true}".strip(),
         
+        # Generated Data
         "visual_only_manipulations": visual_res.get("manipulations", []),
         "audio_only_manipulations": audio_res.get("manipulations", []),
         "combined_manipulations": []
@@ -290,16 +308,16 @@ def combine_modalities(line_data, visual_res, audio_res):
             "refutation": am["refutation"]
         })
 
-    line_data["groundinc_annotations"] = output
+    line_data["forensic_mentalization"] = output
     return line_data
 
 
 def _line_hash(line):
     data = json.loads(line)
-    data.pop("groundinc_annotations", None)
+    data.pop("forensic_mentalization", None)
     return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
 
-def generate_groundinc_annotations(input_jsonl, output_jsonl, api_key, p1_file, p2_file, model_name,
+def generate_forensic_pipeline(input_jsonl, output_jsonl, api_key, p1_file, p2_file, model_name,
                                max_workers, retries, media=None):
     media = media or MediaOptions()
     with open(p1_file, "r", encoding="utf-8") as f:
@@ -329,7 +347,7 @@ def generate_groundinc_annotations(input_jsonl, output_jsonl, api_key, p1_file, 
                 futures.append(executor.submit(process_modality_task, idx, ln, api_key, p1_text, p2_text, mod, model_name, retries, media))
 
         with open(output_jsonl, "a", encoding="utf-8", buffering=1) as outfile:
-            for fut in tqdm(as_completed(futures), total=len(futures), desc="GroundInc generation"):
+            for fut in tqdm(as_completed(futures), total=len(futures), desc="Adversarial Pipeline Running"):
                 idx, mod, res = fut.result()
                 results[idx][mod] = res
                 
@@ -381,7 +399,7 @@ if __name__ == "__main__":
         print("Note: --video_dir not set; only records carrying an explicit video_path will resolve.")
 
     api_key = read_api_key(args.api_key_file, args.api_key_env)
-    generate_groundinc_annotations(
+    generate_forensic_pipeline(
         args.input_jsonl,
         args.output_jsonl,
         api_key,

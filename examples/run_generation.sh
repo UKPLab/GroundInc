@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Gemini sees the source video plus the timestamped caption timeline.
+
 python -m groundinc.data_generation.generate_with_gemini \
   --input_jsonl examples/input_record.jsonl \
   --output_jsonl outputs/generated_groundinc.jsonl \

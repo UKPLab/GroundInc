@@ -1,0 +1,62 @@
+# Sigmoid interval-bank localizer: class-balanced BINARY cross-entropy on (z + shared bias b).
+# Set lambda_pair: 0.1 to add the class-balanced Bernoulli-JS pair term (sigmoid_bce_js).
+# NOTE: the sigmoid objective tends to overfit; save frequently and early-stop at the
+# grounding peak (empirically ~step 100-200). Replace every <placeholder> before running.
+
+# --- model ---
+model_name_or_path: "Qwen/Qwen3-VL-8B-Instruct"
+torch_dtype: "bfloat16"
+attn_implementation: "flash_attention_2"
+freeze_vision_tower: true
+lora_enable: true
+lora_r: 32
+lora_alpha: 64
+lora_dropout: 0.05
+lora_use_rslora: false
+lora_target_modules: "q_proj,v_proj,k_proj,o_proj,gate_proj,up_proj,down_proj"
+wandb_entity: ""
+wandb_project: "groundinc-localizer"
+
+# --- data (supply your own) ---
+train_data_path: "<train_jsonl>"
+whisperx_dir: "<asr_dir>"
+video_dir: "<video_dir>"
+video_mode: "id"
+fps: 0.5
+max_pixels: 50176
+max_video_frames: 32
+max_length: 12288
+enable_video: true
+
+# --- objective / bank ---
+objective: "sigmoid"       # class-balanced BCE (+ Bernoulli JS when lambda_pair > 0)
+lambda_pair: 0.0           # 0 = BCE only; 0.1 = BCE + Bernoulli-JS pair term
+bank_widths: "8,16,32,64"
+bank_stride_frac: 0.5
+max_candidates: 128
+bank_min_len: 1.0
+iou_mode: "hull"
+num_sampler_epochs: 8
+dev_frac: 0.1
+split_seed: 42
+
+# --- training ---
+output_dir: "<output_dir>"
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 16
+learning_rate: 1.0e-4
+weight_decay: 0.01
+warmup_ratio: 0.05
+lr_scheduler_type: "cosine"
+bf16: true
+tf32: true
+gradient_checkpointing: true
+remove_unused_columns: false
+dataloader_num_workers: 4
+logging_steps: 1
+save_strategy: "steps"
+save_steps: 100            # finer granularity to locate the early-stopping peak
+save_total_limit: 10
+seed: 42
+report_to: "none"
+run_name: "localizer_sigmoid"

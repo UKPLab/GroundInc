@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 DEFAULT_PROMPT_STYLE = "temporal_inconsistency_veracity"
-PROMPT_STYLE_ALIASES = {
+LEGACY_PROMPT_STYLE_ALIASES = {
     "combined": "temporal_inconsistency_veracity",
     "multi-turn": "multi_turn",
     "multi-turn-no-grounding": "multi_turn_no_grounding",
@@ -19,7 +19,7 @@ PROMPT_STYLE_ALIASES = {
     "ground_truth_window_veracity": "ground_truth_window_inconsistency_veracity",
     "ground_truth_window_veracity_manipulation": "ground_truth_window_inconsistency_veracity",
 }
-PROMPT_MODE_MAP = {
+LEGACY_PROMPT_MODE_MAP = {
     "combined": "temporal_inconsistency_veracity",
     "separate": "separate",
     "veracity_only": "temporal_veracity_only",
@@ -44,14 +44,20 @@ AUDIO_MIME_TYPES = {
 }
 THINK_RE = re.compile(r"<think>(.*?)</think>", flags=re.DOTALL | re.IGNORECASE)
 
+# Modes that cut a clip with ffmpeg and therefore need --snippet_dir/--video_dir.
+# "snippet"/"masked_snippet" cut the annotated segment, which is known per record;
+# "predicted_snippet" cuts the model's own predicted interval, which differs per
+# caption task and so is resolved inside the per-task path, not prepare_video_path.
 SNIPPET_VIDEO_MODES = ("snippet", "masked_snippet", "predicted_snippet")
 GROUND_TRUTH_SNIPPET_MODES = ("snippet", "masked_snippet")
 
+# ffmpeg must not inherit stdin (it reads it interactively and will block a
+# non-tty run) and must not be able to hang a caption task indefinitely.
 FFMPEG_TIMEOUT = float(os.environ.get("GROUNDINC_FFMPEG_TIMEOUT", "600"))
 
 
 class VLLMConnectionError(RuntimeError):
-    """Raised when the vLLM API client cannot connect to the server."""
+    """Raised when the vLLM/OpenAI client cannot connect to the server."""
 
 
 def is_connection_error_text(value):
@@ -60,14 +66,14 @@ def is_connection_error_text(value):
 
 def supported_prompt_style_choices(prompt_module):
     styles = set(prompt_module.PROMPT_STYLES)
-    return tuple(sorted(styles | set(PROMPT_STYLE_ALIASES)))
+    return tuple(sorted(styles | set(LEGACY_PROMPT_STYLE_ALIASES)))
 
 
 def normalize_prompt_style(prompt_style, prompt_mode=None):
     if prompt_style:
-        return PROMPT_STYLE_ALIASES.get(prompt_style, prompt_style)
+        return LEGACY_PROMPT_STYLE_ALIASES.get(prompt_style, prompt_style)
     if prompt_mode:
-        return PROMPT_MODE_MAP[prompt_mode]
+        return LEGACY_PROMPT_MODE_MAP[prompt_mode]
     return DEFAULT_PROMPT_STYLE
 
 
@@ -77,9 +83,9 @@ def print_prompt_styles(prompt_module):
         family = spec.get("family", "prompt")
         outputs = ", ".join(spec.get("outputs", ()))
         print(f"{style}: family={family}. Outputs: {outputs}")
-    if PROMPT_STYLE_ALIASES:
-        print("\nAliases:")
-        for alias, target in sorted(PROMPT_STYLE_ALIASES.items()):
+    if LEGACY_PROMPT_STYLE_ALIASES:
+        print("\nLegacy aliases:")
+        for alias, target in sorted(LEGACY_PROMPT_STYLE_ALIASES.items()):
             print(f"{alias} -> {target}")
 
 
@@ -439,6 +445,8 @@ def resolve_source_video_path(data, video_mode, video_dir=None):
 
 
 def prepare_video_path(data, args):
+    # predicted_snippet grounds on the full video first, so it resolves like the
+    # non-snippet modes here; the crop happens per caption task afterwards.
     if args.video_mode == "predicted_snippet":
         source_video_path = resolve_source_video_path(data, "id", args.video_dir)
         if not source_video_path or not os.path.exists(source_video_path):
@@ -708,7 +716,12 @@ async def resolve_predicted_span(
     args,
     request_semaphore,
 ):
-    """Run the grounding pass and return (span, raw_response)."""
+    """Run the grounding pass and return (span, raw_response).
+
+    span is None when the model's answer cannot be parsed into an ordered
+    interval inside the video. Callers must treat that as a terminal failure
+    rather than substituting the gold span or the full video.
+    """
     raw = await run_chat_completion(
         client,
         model_id,
@@ -730,7 +743,11 @@ def pad_and_clamp_span(span, pad, duration):
 
 
 async def cut_predicted_snippet(source_video_path, span, args, vid_id, select_seg):
-    """Cut the predicted interval off the event loop; returns the cached path."""
+    """Cut the predicted interval off the event loop; returns the cached path.
+
+    ensure_video_snippet keys its cache on the interval bounds, so two different
+    predicted spans for the same video cannot collide on one file.
+    """
     return await asyncio.to_thread(
         ensure_video_snippet,
         source_video_path,
@@ -801,6 +818,8 @@ def load_processed_keys(output_file, rerun_errors=False, key_fields=("id", "sele
 
 
 def add_common_vllm_args(parser, prompt_module, default_model_id):
+    # Stashed so validate_common_args can check prompt-style arguments without
+    # re-plumbing the module through every caller.
     parser.set_defaults(prompt_module=prompt_module)
     parser.add_argument("--vllm_url", type=str, required=False)
     parser.add_argument("--model_id", type=str, default=default_model_id)
@@ -846,7 +865,7 @@ def add_common_vllm_args(parser, prompt_module, default_model_id):
         default=32,
         help="Pad cached snippets so height/width are divisible by this value. Use 0 to disable.",
     )
-    parser.add_argument("--prompt_mode", type=str, choices=sorted(PROMPT_MODE_MAP), default=None)
+    parser.add_argument("--prompt_mode", type=str, choices=sorted(LEGACY_PROMPT_MODE_MAP), default=None)
     parser.add_argument("--prompt_style", type=str, choices=supported_prompt_style_choices(prompt_module), default=None)
     parser.add_argument("--list_prompt_styles", action="store_true")
     parser.add_argument("--category_filter", type=str, choices=["all", "visual", "audio", "combined"], default="all")

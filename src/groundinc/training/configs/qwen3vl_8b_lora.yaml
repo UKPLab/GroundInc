@@ -1,7 +1,24 @@
+# Qwen3-VL-8B LoRA SFT on GroundInc.
+#
+# Build the dataset first:
+#   python -m groundinc.training.prepare_sft \
+#     --input data/groundinc_other.jsonl --video_dir videos --asr_dir asr \
+#     --prompt_name inconsistency_no_grounding --output sft/train.json
+#   cp src/groundinc/training/dataset_info.json sft/
+#
+# Then:
+#   llamafactory-cli train src/groundinc/training/configs/qwen3vl_8b_lora.yaml
+#
+# Hyperparameters reproduce the paper's 8B run. Video and LoRA key names have
+# changed across LLaMA-Factory releases - see docs/TRAINING.md for the pinned
+# version this was written against.
+
+### model
 model_name_or_path: Qwen/Qwen3-VL-8B-Instruct
 trust_remote_code: true
 flash_attn: fa2
 
+### method
 stage: sft
 do_train: true
 finetuning_type: lora
@@ -12,16 +29,19 @@ lora_target: q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj
 use_rslora: true
 freeze_vision_tower: true
 
+### dataset
 dataset: groundinc_sft
 dataset_dir: sft
 template: qwen3_vl
-cutoff_len: 6144
+cutoff_len: 8192
 overwrite_cache: true
 preprocessing_num_workers: 8
-video_fps: 1.0
+# fps 0.5 and max_pixels 50176 mirror the paper's frame budget.
+video_fps: 0.5
 video_maxlen: 128
 video_max_pixels: 50176
 
+### output
 output_dir: checkpoints/qwen3vl_8b_inconsistency_no_grounding
 logging_steps: 1
 save_steps: 200
@@ -30,6 +50,7 @@ plot_loss: true
 overwrite_output_dir: true
 report_to: none
 
+### train
 per_device_train_batch_size: 1
 gradient_accumulation_steps: 16
 learning_rate: 2.0e-4
